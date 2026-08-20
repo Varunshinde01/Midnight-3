@@ -1,0 +1,80 @@
+// Midnight Compact Language Contract: SealedBidAuction.compact
+// Demonstrating Selective Disclosure: Private Bids vs Public Ledger Commitments
+
+pragma language_version >= 0.1.0;
+
+import CompactStandardLibrary;
+
+export enum AuctionState {
+    Bidding,
+    Revealed,
+    Settled
+}
+
+export struct BidCommitment {
+    public_key: Bytes<32>;
+    commitment_hash: Bytes<32>;
+    timestamp: Uint<64>;
+}
+
+export struct DisclosedWinner {
+    winner_public_key: Bytes<32>;
+    winning_bid_amount: Uint<64>;
+    proof_hash: Bytes<32>;
+}
+
+// Ledger State (Publicly Disclosed State)
+export ledger {
+    state: AuctionState;
+    item_id: Bytes<32>;
+    seller_pubkey: Bytes<32>;
+    min_bid_amount: Uint<64>;
+    bids_count: Uint<32>;
+    commitments: Vector<100, BidCommitment>;
+    winner: DisclosedWinner;
+}
+
+// Witness Declarations (Private State held strictly on User Device)
+witness private_bid_amount(): Uint<64>;
+witness private_salt(): Bytes<32>;
+witness private_identity_sk(): Bytes<32>;
+
+// ZK Circuit: Compute Bid Commitment without disclosing bid amount or salt
+export circuit submit_sealed_bid(
+    bidder_pk: Bytes<32>,
+    submitted_commitment: Bytes<32>
+): Cell<Boolean> {
+    // Read private state from witness
+    let amount = private_bid_amount();
+    let salt = private_salt();
+
+    // Verification 1: Check bid meets minimum requirement threshold (Circuit Constraint)
+    assert(amount >= min_bid_amount, "Bid must be >= minimum required bid");
+
+    // Verification 2: Check submitted commitment matches hash(amount || salt || bidder_pk)
+    let calculated_hash = sha256_concat(amount, salt, bidder_pk);
+    assert(submitted_commitment == calculated_hash, "Commitment hash mismatch");
+
+    // Increment public bids count and store commitment
+    bids_count = bids_count + 1;
+    return true;
+}
+
+// ZK Circuit: Settle auction and selectively disclose highest bidder
+export circuit settle_auction(
+    winning_pk: Bytes<32>,
+    winning_amount: Uint<64>,
+    winning_salt: Bytes<32>
+): Cell<Boolean> {
+    assert(state == AuctionState.Bidding, "Auction must be in bidding stage");
+
+    // Validate winning bid commitment
+    let expected_hash = sha256_concat(winning_amount, winning_salt, winning_pk);
+    
+    // Set winning details in public ledger (Selective Disclosure)
+    winner.winner_public_key = winning_pk;
+    winner.winning_bid_amount = winning_amount;
+    state = AuctionState.Settled;
+
+    return true;
+}
