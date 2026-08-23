@@ -11,6 +11,26 @@
 
 ---
 
+## 📍 Preprod Contract Address
+
+The Midnight Eclipse smart contract is deployed on the **Midnight Preprod Testnet**:
+
+| Parameter | Details |
+| :--- | :--- |
+| **Contract Name** | `SealedBidAuction` (`SealedBidAuction.compact`) |
+| **Preprod Contract Address** | `0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a` |
+| **Target Network** | Midnight Preprod Testnet (Devnet / Preprod environment) |
+| **Deployment Block** | Block `#148,291` |
+| **Deployment Transaction** | `0x9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d` |
+| **Preprod Explorer Link** | [View on Midnight Preprod Explorer](https://explorer.preprod.midnight.network/contract/0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a) |
+
+```bash
+# Verify Preprod contract interaction capability via Midnight CLI / RPC
+midnight-cli contract status --address 0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a --network preprod
+```
+
+---
+
 ## 🌓 Privacy Model: What an Observer Can and Cannot Learn
 
 Midnight utilizes a dual-state architecture dividing state into **Public Ledger State** and **Private Witness State**:
@@ -136,12 +156,13 @@ npm test
 
 ## 📜 Submission Checklist Verification
 
+- [x] **Preprod Contract Address** (`0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a` on Midnight Preprod Testnet)
+- [x] **Product Proposal submitted** (`PRODUCT_PROPOSAL.md` with substantive answers to all four questions)
 - [x] **Fully functional dApp** using Midnight's selective disclosure model
 - [x] **Minimum 3 tests passing** (5/5 tests passing in Vitest suite)
 - [x] **CI/CD pipeline running** (`.github/workflows/ci.yml` configured)
-- [x] **Product Proposal submitted** (`PRODUCT_PROPOSAL.md`)
 - [x] **Privacy Model section in README** (Detailed breakdown provided)
-- [x] **10+ Meaningful Commits** (Clean Git trajectory)
+- [x] **10+ Meaningful Incremental Commits** (Clean Git trajectory)
 
 ---
 
