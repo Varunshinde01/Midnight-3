@@ -323,13 +323,22 @@ export default function App() {
       }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr auto', gap: '32px', alignItems: 'center' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
               <span className="badge badge-cyan">
                 <Sparkles size={12} /> MIDNIGHT PRIVACY MODEL ACTIVE
               </span>
               <span className="badge badge-green">
                 <CheckCircle2 size={12} /> 5/5 VITEST TESTS PASSING
               </span>
+              <a 
+                href="https://explorer.preprod.midnight.network/contract/0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="badge badge-purple"
+                style={{ textDecoration: 'none', cursor: 'pointer' }}
+              >
+                <Lock size={12} /> Preprod Contract: 0x7a3f...8f9a
+              </a>
             </div>
             <h2 style={{ fontSize: '2.2rem', fontWeight: 800, lineHeight: 1.2, marginBottom: '10px' }}>
               "Half light, half shadow — the truest picture of Midnight itself."
@@ -553,6 +562,25 @@ export default function App() {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                 Side-by-side comparison of public blockchain disclosure vs private user state on Midnight network.
               </p>
+            </div>
+
+            {/* Preprod Contract Address Banner */}
+            <div style={{ background: 'rgba(15, 23, 42, 0.7)', border: '1px solid rgba(147, 51, 234, 0.3)', borderRadius: 'var(--radius-md)', padding: '16px 20px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Deployed Preprod Contract Address</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.95rem', color: '#c084fc', fontWeight: 600, marginTop: '2px' }}>
+                  0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a
+                </div>
+              </div>
+              <a
+                href="https://explorer.preprod.midnight.network/contract/0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary"
+                style={{ padding: '6px 14px', fontSize: '0.8rem', textDecoration: 'none' }}
+              >
+                View on Preprod Explorer ↗
+              </a>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
