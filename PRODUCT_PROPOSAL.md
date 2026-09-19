@@ -1,8 +1,10 @@
 # Formal Product Proposal: Midnight Eclipse Sealed-Bid Auction Platform
 
-**Submitted for**: Midnight Developer Program Submission  
+**Submitted for**: Midnight Developer Program Submission (RiseIn Level 3)  
 **Selected Category**: Sealed-Bid Auction — Private Bids, Verifiable Settlement  
 **Project Name**: Midnight Eclipse  
+**GitHub Repository**: [https://github.com/Varunshinde01/Midnight-3](https://github.com/Varunshinde01/Midnight-3)  
+**Live Demo URL**: [https://midnight-eclipse-dapp.vercel.app](https://midnight-eclipse-dapp.vercel.app)  
 **Preprod Contract Address**: `0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a`  
 **Target Network**: Midnight Preprod Testnet  
 
