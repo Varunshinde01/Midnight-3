@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:compact": "compactc src/contract/SealedBidAuction.compact src/managed/sealed_bid_auction",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

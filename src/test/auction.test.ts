@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SealedBidAuctionContract, PrivateBidWitness } from '../contract/SealedBidAuction';
+import { fetchContractStateFromIndexer, setNetworkId, MidnightNetworkId } from '../contract/midnightSdk';
 
 describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
   let auction: SealedBidAuctionContract;
@@ -11,11 +12,13 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     itemImage: '/moon-icon.svg',
     sellerPublicKey: '0xSELLER_PUBKEY_999',
     minBidAmount: 100, // $100 Minimum Bid
-    endTime: Date.now() + 86400000
+    endTime: Date.now() + 86400000,
+    contractAddress: '0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a'
   };
 
   beforeEach(() => {
     auction = new SealedBidAuctionContract(sampleParams);
+    setNetworkId(MidnightNetworkId.Preprod);
   });
 
   it('Test 1: Selective Disclosure - Commitment hides private bid amount and salt', async () => {
@@ -36,7 +39,7 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     expect(commitmentHash).toBeDefined();
     expect(commitmentHash.length).toBeGreaterThanOrEqual(16);
 
-    // Assert raw bid amount 500 is NOT exposed in commitment string
+    // Assert raw bid amount 500 and salt are NOT exposed in commitment string
     expect(commitmentHash).not.toContain('500');
     expect(commitmentHash).not.toContain('secret_salt_abc_123');
   });
@@ -49,12 +52,13 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     };
     const bidderPk = '0xALICE_PUBKEY';
 
-    // Generate ZK Proof
+    // Generate ZK Proof via Midnight Proof Provider
     const proofResult = await auction.generateBidProof(witness, bidderPk);
 
     expect(proofResult.valid).toBe(true);
     expect(proofResult.commitmentHash).toBeDefined();
     expect(proofResult.nullifier).toBeDefined();
+    expect(proofResult.zkProof).toContain('MIDNIGHT-ZK-PROOF');
 
     // Submit to Midnight Ledger
     const submitResult = await auction.submitSealedBid(
@@ -65,6 +69,7 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     );
 
     expect(submitResult.success).toBe(true);
+    expect(submitResult.txHash).toBeDefined();
     expect(auction.commitments.length).toEqual(1);
     expect(auction.commitments[0].commitmentHash).toEqual(proofResult.commitmentHash);
   });
@@ -84,7 +89,40 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     expect(auction.commitments.length).toEqual(0);
   });
 
-  it('Test 4: Settlement & Selective Disclosure - Winner disclosed, losing bids stay hidden', async () => {
+  it('Test 4: On-Chain Nullifier Registry - Double-bidding with identical nullifier is rejected', async () => {
+    const witness: PrivateBidWitness = {
+      bidAmount: 300,
+      salt: 'salt_replay_1',
+      secretKey: 'same_bidder_secret_key'
+    };
+    const bidderPk = '0xREPLAY_BIDDER';
+
+    const proof = await auction.generateBidProof(witness, bidderPk);
+
+    // First Submission succeeds
+    const firstSubmit = await auction.submitSealedBid(
+      bidderPk,
+      proof.commitmentHash,
+      proof.nullifier,
+      proof.zkProof
+    );
+    expect(firstSubmit.success).toBe(true);
+    expect(auction.nullifiers.has(proof.nullifier)).toBe(true);
+
+    // Second Submission with identical nullifier is rejected by on-chain nullifier registry
+    const secondSubmit = await auction.submitSealedBid(
+      bidderPk,
+      proof.commitmentHash,
+      proof.nullifier,
+      proof.zkProof
+    );
+
+    expect(secondSubmit.success).toBe(false);
+    expect(secondSubmit.message).toContain('Nullifier already spent');
+    expect(auction.commitments.length).toEqual(1);
+  });
+
+  it('Test 5: Seller Authorization & Compact Settlement - Winner disclosed, losing bids stay hidden', async () => {
     // Bidder 1 (Alice): Bids $500
     const aliceWitness: PrivateBidWitness = {
       bidAmount: 500,
@@ -108,13 +146,17 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     // Verify 2 commitments registered on public ledger
     expect(auction.commitments.length).toEqual(2);
 
-    // Disclose bids for settlement
-    const settlementResult = await auction.settleAuction([
-      { witness: aliceWitness, bidderPublicKey: alicePk },
-      { witness: bobWitness, bidderPublicKey: bobPk }
-    ]);
+    // Settle with Seller Authorization Key
+    const settlementResult = await auction.settleAuction(
+      [
+        { witness: aliceWitness, bidderPublicKey: alicePk },
+        { witness: bobWitness, bidderPublicKey: bobPk }
+      ],
+      'sk_seller_authorized'
+    );
 
     expect(settlementResult.success).toBe(true);
+    expect(settlementResult.txHash).toBeDefined();
     expect(auction.winner).not.toBeNull();
     expect(auction.winner?.winnerPublicKey).toEqual(bobPk);
     expect(auction.winner?.winningBidAmount).toEqual(1200);
@@ -126,35 +168,11 @@ describe('Midnight Sealed-Bid Auction Smart Contract & ZK Circuit', () => {
     expect(publicView.disclosedWinner?.losingBidsStatus).toContain('100% hidden');
   });
 
-  it('Test 5: Nullifier Verification - Double-bidding with same key is rejected', async () => {
-    const witness: PrivateBidWitness = {
-      bidAmount: 300,
-      salt: 'salt_replay_1',
-      secretKey: 'same_bidder_secret_key'
-    };
-    const bidderPk = '0xREPLAY_BIDDER';
-
-    const proof = await auction.generateBidProof(witness, bidderPk);
-
-    // First Submission succeeds
-    const firstSubmit = await auction.submitSealedBid(
-      bidderPk,
-      proof.commitmentHash,
-      proof.nullifier,
-      proof.zkProof
-    );
-    expect(firstSubmit.success).toBe(true);
-
-    // Second Submission with identical nullifier is rejected
-    const secondSubmit = await auction.submitSealedBid(
-      bidderPk,
-      proof.commitmentHash,
-      proof.nullifier,
-      proof.zkProof
-    );
-
-    expect(secondSubmit.success).toBe(false);
-    expect(secondSubmit.message).toContain('Nullifier already spent');
-    expect(auction.commitments.length).toEqual(1);
+  it('Test 6: Midnight Indexer & Preprod SDK Integration - Queries contract state via Indexer GraphQL client', async () => {
+    const indexerRes = await fetchContractStateFromIndexer(sampleParams.contractAddress);
+    expect(indexerRes.success).toBe(true);
+    expect(indexerRes.syncedBlock).toBeGreaterThan(0);
+    expect(indexerRes.ledgerState).not.toBeNull();
+    expect(indexerRes.ledgerState?.min_bid_amount).toEqual(500n);
   });
 });
