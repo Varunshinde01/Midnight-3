@@ -1,6 +1,6 @@
 // Midnight Compact Language Smart Contract: SealedBidAuction.compact
-// Demonstrating Selective Disclosure: Private Bids vs Public Ledger Commitments
-// Includes On-Chain Nullifier Registry & Genuine Seller Authorization Constraints
+// Selective Disclosure: Private Bids vs Public Ledger Commitments
+// Includes Ledger-Backed Nullifier Registry & Genuine Seller Authorization Constraints
 
 pragma language_version >= 0.1.0;
 
@@ -25,7 +25,7 @@ export struct DisclosedWinner {
     proof_hash: Bytes<32>;
 }
 
-// Ledger State (Publicly Disclosed State on Midnight Blockchain)
+// Public Ledger State on Midnight Blockchain
 export ledger {
     state: AuctionState;
     item_id: Bytes<32>;
@@ -38,62 +38,87 @@ export ledger {
     winner: DisclosedWinner;
 }
 
-// Witness Declarations (Private State held strictly on Local Client Device)
+// Private Witness Declarations (Client Local Zero-Knowledge State)
 witness private_bid_amount(): Uint<64>;
 witness private_salt(): Bytes<32>;
 witness private_identity_sk(): Bytes<32>;
 witness private_seller_sk(): Bytes<32>;
 
-// ZK Circuit: Compute & Register Bid Commitment with On-Chain Nullifier Verification
+// ZK Circuit: Compute & Register Bid Commitment with On-Chain Ledger Nullifier Verification
 export circuit submit_sealed_bid(
     bidder_pk: Bytes<32>,
     submitted_commitment: Bytes<32>,
     nullifier: Bytes<32>
 ): Cell<Boolean> {
-    // Assert auction is open for bidding
+    // Constraint 1: Auction must be open for bidding
     assert(state == AuctionState.Bidding, "Auction is not open for bidding");
 
-    // Read private witness parameters from local client state
+    // Read private witness parameters from client device
     let amount = private_bid_amount();
     let salt = private_salt();
-
-    // Circuit Constraint 1: Bid must be >= minimum required reserve price
-    assert(amount >= min_bid_amount, "Bid must be >= minimum required bid threshold");
-
-    // Circuit Constraint 2: Verify submitted commitment matches hash(amount || salt || bidder_pk)
-    let calculated_hash = sha256_concat(amount, salt, bidder_pk);
-    assert(submitted_commitment == calculated_hash, "Commitment hash mismatch");
-
-    // Circuit Constraint 3: Verify nullifier signature using private identity witness key
     let witness_sk = private_identity_sk();
+
+    // Constraint 2: Bid amount >= minimum threshold
+    assert(amount >= min_bid_amount, "Bid amount is below required minimum threshold");
+
+    // Constraint 3: Verify commitment hash formula H = SHA256(amount || salt || bidder_pk)
+    let calculated_hash = sha256_concat(amount, salt, bidder_pk);
+    assert(submitted_commitment == calculated_hash, "Commitment hash mismatch with private witness");
+
+    // Constraint 4: Verify spend nullifier formula N = SHA256(witness_sk || item_id)
     let expected_nullifier = sha256_concat(witness_sk, item_id);
     assert(nullifier == expected_nullifier, "Invalid or unauthorized spend nullifier");
 
-    // Record commitment and spent nullifier on Midnight Public Ledger
-    bids_count = bids_count + 1;
+    // Constraint 5: Ledger-backed nullifier uniqueness check
+    for i in 0..100 {
+        if i < nullifiers_count {
+            assert(nullifiers[i] != nullifier, "Nullifier already spent! Duplicate bid rejected");
+        }
+    }
+
+    // Record bid commitment & spend nullifier on Midnight Public Ledger
+    nullifiers[nullifiers_count] = nullifier;
     nullifiers_count = nullifiers_count + 1;
-    
+
+    commitments[bids_count] = BidCommitment {
+        public_key: bidder_pk,
+        commitment_hash: submitted_commitment,
+        nullifier: nullifier,
+        timestamp: 0
+    };
+    bids_count = bids_count + 1;
+
     return true;
 }
 
-// ZK Circuit: Settle auction with Seller Authorization & Settlement Proof Constraints
+// ZK Circuit: Settle auction with Seller Authorization & Registered Commitment Winner Verification
 export circuit settle_auction(
     winning_pk: Bytes<32>,
     winning_amount: Uint<64>,
     winning_salt: Bytes<32>
 ): Cell<Boolean> {
-    assert(state == AuctionState.Bidding, "Auction must be in bidding stage for settlement");
+    // Constraint 1: Auction state and bid count validation
+    assert(state == AuctionState.Bidding, "Auction must be in Bidding stage to settle");
     assert(bids_count > 0, "Cannot settle auction with zero bid commitments");
 
-    // Circuit Constraint 1: Seller Authorization Witness Check
+    // Constraint 2: Seller Authorization Witness Check
     let seller_sk = private_seller_sk();
     let derived_seller_pk = sha256(seller_sk);
     assert(derived_seller_pk == seller_pubkey, "Unauthorized settlement: Caller is not the auction seller");
 
-    // Circuit Constraint 2: Validate winning bid commitment formula
+    // Constraint 3: Validate winning bid commitment against registered ledger commitments
     let expected_hash = sha256_concat(winning_amount, winning_salt, winning_pk);
-    
-    // Set winning details in public ledger (Selective Disclosure)
+    let mut commitment_found: Boolean = false;
+    for i in 0..100 {
+        if i < bids_count {
+            if commitments[i].commitment_hash == expected_hash && commitments[i].public_key == winning_pk {
+                commitment_found = true;
+            }
+        }
+    }
+    assert(commitment_found, "Winning bid commitment does not match any registered ledger commitment");
+
+    // Update public ledger selective disclosure state
     winner.winner_public_key = winning_pk;
     winner.winning_bid_amount = winning_amount;
     winner.proof_hash = expected_hash;

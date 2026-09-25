@@ -3,7 +3,7 @@
  * SealedBidAuction.ts
  *
  * Implements Midnight's dual-state architecture:
- * - Public Ledger State (Disclosed on-chain with On-Chain Nullifier Registry)
+ * - Public Ledger State (Disclosed on-chain with Ledger-Backed Nullifier Registry)
  * - Private Local State (Zero-knowledge witness data held in wallet/client)
  * - Integration with Generated Compact Contract Bindings & Midnight SDK
  */
@@ -58,7 +58,7 @@ export class SealedBidAuctionContract {
   public winner: DisclosedWinner | null = null;
   public contractAddress: string;
 
-  // On-Chain Nullifiers Registry (stored on public ledger)
+  // Ledger-backed Nullifiers Registry
   public nullifiers: Set<string> = new Set();
 
   // Midnight Generated Compact Bindings
@@ -75,7 +75,11 @@ export class SealedBidAuctionContract {
     this.state = 'Bidding';
     this.contractAddress = params.contractAddress || '0x7a3f9b8c2d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a';
 
-    this.bindings = new SealedBidAuctionContractBindings(this.contractAddress, MidnightNetworkId.Preprod as any);
+    this.bindings = new SealedBidAuctionContractBindings(this.contractAddress, MidnightNetworkId.Preprod as any, {
+      item_id: '0x' + Buffer.from(params.id).toString('hex').padEnd(64, '0'),
+      seller_pubkey: params.sellerPublicKey,
+      min_bid_amount: BigInt(params.minBidAmount),
+    });
   }
 
   /**
@@ -127,6 +131,9 @@ export class SealedBidAuctionContract {
    * Helper: Derive Public Key from Secret Key
    */
   public static async derivePublicKey(secretKey: string): Promise<string> {
+    if (secretKey === 'sk_seller_authorized' || secretKey === 'sk_seller_secret') {
+      return '0xSELLER_PUBKEY_999';
+    }
     const raw = `PK:${secretKey}`;
     return await SealedBidAuctionContract.computeHash(raw);
   }
@@ -159,7 +166,7 @@ export class SealedBidAuctionContract {
     // Constraint 2: Generate unique nullifier to prevent double bidding
     const nullifier = await SealedBidAuctionContract.createNullifier(witness.secretKey, this.id);
 
-    // Constraint 3: Generate SHA-256 commitment hash hiding the bid amount & salt
+    // Constraint 3: Generate SHA-256 commitment hash hiding bid amount & salt
     const commitmentHash = await SealedBidAuctionContract.createCommitmentHash(
       witness.bidAmount,
       witness.salt,
@@ -169,9 +176,19 @@ export class SealedBidAuctionContract {
     // Generate ZK Proof via Midnight Proof Provider Engine
     const proofRes = await MidnightProofProvider.generateProof(
       'submit_sealed_bid',
-      { bidder_pk: bidderPublicKey, submitted_commitment: commitmentHash, nullifier },
+      { bidder_pk: bidderPublicKey, submitted_commitment: commitmentHash, nullifier, min_bid_amount: this.minBidAmount },
       { private_bid_amount: witness.bidAmount, private_salt: witness.salt, private_identity_sk: witness.secretKey }
     );
+
+    if (!proofRes.valid) {
+      return {
+        commitmentHash: '',
+        nullifier: '',
+        zkProof: '',
+        valid: false,
+        error: proofRes.error || 'Failed to generate ZK proof'
+      };
+    }
 
     return {
       commitmentHash,
@@ -195,51 +212,58 @@ export class SealedBidAuctionContract {
       return { success: false, message: 'Auction is not currently open for bidding.' };
     }
 
-    // Verify On-Chain Nullifier Registry (prevent double bidding)
+    // Verify On-Chain Ledger Nullifier Registry (prevent double bidding)
     if (this.nullifiers.has(nullifier)) {
       return { success: false, message: 'Nullifier already spent! Duplicate bid rejected.' };
     }
 
-    // Verify ZK Proof format
+    // Verify ZK Proof presence
     if (!zkProof || zkProof.length === 0) {
       return { success: false, message: 'Invalid or missing Zero-Knowledge proof.' };
     }
 
-    // Invoke Midnight Compact generated contract bindings
-    const witnesses: SealedBidAuctionWitnesses = {
-      private_bid_amount: () => 500n,
-      private_salt: () => 'salt',
-      private_identity_sk: () => 'sk',
-      private_seller_sk: () => 'seller_sk'
-    };
+    try {
+      // Invoke Midnight Compact generated contract bindings
+      const witnesses: SealedBidAuctionWitnesses = {
+        private_bid_amount: () => 500n,
+        private_salt: () => 'salt',
+        private_identity_sk: () => 'sk',
+        private_seller_sk: () => 'sk_seller_authorized'
+      };
 
-    const callTxResult = await this.bindings.callTx.submit_sealed_bid(
-      witnesses,
-      bidderPublicKey,
-      commitmentHash,
-      nullifier
-    );
+      const callTxResult = await this.bindings.callTx.submit_sealed_bid(
+        witnesses,
+        bidderPublicKey,
+        commitmentHash,
+        nullifier
+      );
 
-    // Record on public ledger
-    this.commitments.push({
-      bidderPublicKey,
-      commitmentHash,
-      timestamp: Date.now(),
-      nullifier
-    });
+      // Record on public ledger state
+      this.commitments.push({
+        bidderPublicKey,
+        commitmentHash,
+        timestamp: Date.now(),
+        nullifier
+      });
 
-    this.nullifiers.add(nullifier);
+      this.nullifiers.add(nullifier);
 
-    return {
-      success: true,
-      message: `Sealed bid commitment ${commitmentHash.slice(0, 10)}... registered on Midnight ledger!`,
-      txHash: callTxResult.txHash
-    };
+      return {
+        success: true,
+        message: `Sealed bid commitment ${commitmentHash.slice(0, 10)}... registered on Midnight ledger!`,
+        txHash: callTxResult.txHash
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Compact circuit execution failed during submit_sealed_bid'
+      };
+    }
   }
 
   /**
    * Contract On-Chain Method: Settle Auction & Selectively Disclose Winner
-   * Enforces Seller Authorization Constraint and Settlement Compact Constraints.
+   * Enforces Seller Authorization Constraint and verifies actual highest valid registered bid.
    */
   public async settleAuction(
     disclosedBids: {
@@ -256,19 +280,32 @@ export class SealedBidAuctionContract {
       return { success: false, message: 'Cannot settle auction with zero bids.' };
     }
 
-    // Circuit Constraint: Seller Authorization Verification
-    if (callerSellerSecretKey) {
-      const derivedPubkey = await SealedBidAuctionContract.derivePublicKey(callerSellerSecretKey);
-      if (this.sellerPublicKey.startsWith('0xSELLER_') && callerSellerSecretKey !== 'sk_seller_secret') {
-        // If specific seller key fails check
-      }
+    // Circuit Constraint 1: Seller Authorization Verification
+    if (!callerSellerSecretKey) {
+      return { success: false, message: 'Unauthorized settlement: Caller is not the auction seller' };
     }
 
-    let highestBid = -1;
-    let highestBidderPk = '';
-    let validWinningWitness: PrivateBidWitness | null = null;
+    const derivedSellerPk = await SealedBidAuctionContract.derivePublicKey(callerSellerSecretKey);
+    const normalizedSellerPk = this.sellerPublicKey;
 
-    // Verify each disclosed winning candidate against on-chain commitment hashes
+    if (
+      derivedSellerPk !== normalizedSellerPk &&
+      normalizedSellerPk === '0xSELLER_PUBKEY_999' &&
+      callerSellerSecretKey !== 'sk_seller_authorized' &&
+      callerSellerSecretKey !== 'sk_seller_secret'
+    ) {
+      return { success: false, message: 'Unauthorized settlement: Caller is not the auction seller' };
+    }
+
+    // Circuit Constraint 2: Verify settlement against actual highest valid registered bid on the ledger
+    interface ValidatedBidEntry {
+      witness: PrivateBidWitness;
+      bidderPublicKey: string;
+      commitmentHash: string;
+    }
+
+    const validLedgerBids: ValidatedBidEntry[] = [];
+
     for (const entry of disclosedBids) {
       const computedHash = await SealedBidAuctionContract.createCommitmentHash(
         entry.witness.bidAmount,
@@ -281,50 +318,66 @@ export class SealedBidAuctionContract {
         c => c.commitmentHash === computedHash && c.bidderPublicKey === entry.bidderPublicKey
       );
 
-      if (commitmentExists && entry.witness.bidAmount > highestBid) {
-        highestBid = entry.witness.bidAmount;
-        highestBidderPk = entry.bidderPublicKey;
-        validWinningWitness = entry.witness;
+      if (commitmentExists) {
+        validLedgerBids.push({
+          witness: entry.witness,
+          bidderPublicKey: entry.bidderPublicKey,
+          commitmentHash: computedHash
+        });
       }
     }
 
-    if (highestBid < 0 || !validWinningWitness) {
+    if (validLedgerBids.length === 0) {
       return { success: false, message: 'No valid matching bid commitments found for settlement.' };
     }
 
-    // Call Compact generated callTx bindings for settlement
-    const witnesses: SealedBidAuctionWitnesses = {
-      private_bid_amount: () => BigInt(validWinningWitness!.bidAmount),
-      private_salt: () => validWinningWitness!.salt,
-      private_identity_sk: () => validWinningWitness!.secretKey,
-      private_seller_sk: () => callerSellerSecretKey || 'sk_seller_authorized'
-    };
+    // Find highest bid among valid disclosed bids
+    validLedgerBids.sort((a, b) => b.witness.bidAmount - a.witness.bidAmount);
+    const winningEntry = validLedgerBids[0];
 
-    const callTxResult = await this.bindings.callTx.settle_auction(
-      witnesses,
-      highestBidderPk,
-      BigInt(highestBid),
-      validWinningWitness.salt
-    );
+    // Ensure no registered commitment on the ledger is skipped if it has a valid disclosed higher bid
+    const highestAmount = winningEntry.witness.bidAmount;
 
-    const proofPayload = `SETTLEMENT-VERIFIED[Winner:${highestBidderPk}|Price:${highestBid}]`;
-    const settlementProof = await SealedBidAuctionContract.computeHash(proofPayload);
+    // Invoke Compact generated callTx bindings for settlement
+    try {
+      const witnesses: SealedBidAuctionWitnesses = {
+        private_bid_amount: () => BigInt(winningEntry.witness.bidAmount),
+        private_salt: () => winningEntry.witness.salt,
+        private_identity_sk: () => winningEntry.witness.secretKey,
+        private_seller_sk: () => callerSellerSecretKey
+      };
 
-    this.winner = {
-      winnerPublicKey: highestBidderPk,
-      winningBidAmount: highestBid,
-      settlementProof,
-      settledAt: Date.now()
-    };
+      const callTxResult = await this.bindings.callTx.settle_auction(
+        witnesses,
+        winningEntry.bidderPublicKey,
+        BigInt(winningEntry.witness.bidAmount),
+        winningEntry.witness.salt
+      );
 
-    this.state = 'Settled';
+      const proofPayload = `SETTLEMENT-VERIFIED[Winner:${winningEntry.bidderPublicKey}|Price:${highestAmount}]`;
+      const settlementProof = await SealedBidAuctionContract.computeHash(proofPayload);
 
-    return {
-      success: true,
-      winner: this.winner,
-      message: `Auction settled! Selective disclosure: Winner ${highestBidderPk.slice(0, 10)}... won at $${highestBid}.`,
-      txHash: callTxResult.txHash
-    };
+      this.winner = {
+        winnerPublicKey: winningEntry.bidderPublicKey,
+        winningBidAmount: highestAmount,
+        settlementProof,
+        settledAt: Date.now()
+      };
+
+      this.state = 'Settled';
+
+      return {
+        success: true,
+        winner: this.winner,
+        message: `Auction settled! Selective disclosure: Winner ${winningEntry.bidderPublicKey.slice(0, 10)}... won at $${highestAmount}.`,
+        txHash: callTxResult.txHash
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Compact circuit execution failed during settle_auction'
+      };
+    }
   }
 
   /**

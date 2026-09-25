@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Compile & Run Midnight ZK Test Suite
+    name: Compile Compact & Run Midnight ZK Test Suite
     runs-on: ubuntu-latest
 
     strategy:
@@ -28,13 +28,18 @@ jobs:
       - name: Install Project Dependencies
         run: npm ci
 
+      - name: Compile Midnight Compact Smart Contract
+        run: npm run build:compact
+
       - name: Validate Production Build Compilation
         run: npm run build
 
-      - name: Run Vitest Privacy & Circuit Test Suite
+      - name: Run Vitest Privacy & Circuit Test Suite (Replay, Invalid Bids, Unauthorized Settlement, Winner Verification)
         run: npm test
 
-      - name: Verify Midnight Compact Source Artifacts
+      - name: Verify Midnight Compact & Generated Artifacts
         run: |
           test -f src/contract/SealedBidAuction.compact
-          echo "Midnight Compact contract definition validated!"
+          test -f src/managed/sealed_bid_auction/contract/index.ts
+          test -f src/managed/sealed_bid_auction/zkir/sealed_bid_auction.zkir
+          echo "Midnight Compact contract & generated compiler artifacts validated successfully!"

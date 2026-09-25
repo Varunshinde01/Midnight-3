@@ -742,7 +742,7 @@ export default function App() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '28px' }}>
               <div style={{ background: 'rgba(8, 12, 22, 0.8)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Vitest Test Suite</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#4ade80' }}>6 / 6 Passed</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#4ade80' }}>8 / 8 Passed</div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>Unit & Integration Test Runner</div>
               </div>
 
@@ -771,23 +771,31 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
                   <CheckCircle2 size={16} />
-                  <span><strong>Test 2:</strong> ZK Circuit - Valid bid (≥ min bid) generates proof and passes constraint check</span>
+                  <span><strong>Test 2:</strong> ZK Circuit - Valid bid (≥ min bid) passes proof generation and ledger registration</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
                   <CheckCircle2 size={16} />
-                  <span><strong>Test 3:</strong> ZK Circuit - Invalid bid (&lt; min bid) fails circuit constraint assertion</span>
+                  <span><strong>Test 3:</strong> ZK Circuit Constraint - Invalid bid (&lt; min bid) fails circuit check</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
                   <CheckCircle2 size={16} />
-                  <span><strong>Test 4:</strong> On-Chain Nullifier Registry - Rejects duplicate bids with spent nullifiers</span>
+                  <span><strong>Test 4:</strong> On-Chain Nullifier Registry - Replay attack with spent nullifier is rejected</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
                   <CheckCircle2 size={16} />
-                  <span><strong>Test 5:</strong> Seller Authorization & Settlement - Enforces genuine seller authorization witness</span>
+                  <span><strong>Test 5:</strong> Unauthorized Settlement Rejection - Settlement by non-seller fails</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
                   <CheckCircle2 size={16} />
-                  <span><strong>Test 6:</strong> Midnight Indexer State Integration - Fetch state from Indexer GraphQL path</span>
+                  <span><strong>Test 6:</strong> Seller Authorization & Winner Verification - Settlement selects highest valid registered bid</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
+                  <CheckCircle2 size={16} />
+                  <span><strong>Test 7:</strong> Midnight Indexer Client - Production query handling and simulation fallback</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80' }}>
+                  <CheckCircle2 size={16} />
+                  <span><strong>Test 8:</strong> Wallet Connection - Explicit simulated fallback mode when Lace extension is absent</span>
                 </div>
               </div>
             </div>

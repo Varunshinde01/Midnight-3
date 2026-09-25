@@ -4,26 +4,46 @@
   "zkir": [
     {
       "circuit": "submit_sealed_bid",
-      "inputs": ["bidder_pk", "submitted_commitment", "nullifier"],
-      "witnesses": ["private_bid_amount", "private_salt", "private_identity_sk"],
+      "inputs": [
+        "bidder_pk",
+        "submitted_commitment",
+        "nullifier"
+      ],
+      "witnesses": [
+        "private_bid_amount",
+        "private_salt",
+        "private_identity_sk"
+      ],
       "constraints": [
+        "assert(state == AuctionState.Bidding)",
         "assert(amount >= min_bid_amount)",
         "assert(submitted_commitment == sha256_concat(amount, salt, bidder_pk))",
-        "assert(nullifier == sha256_concat(witness_sk, item_id))"
+        "assert(nullifier == sha256_concat(witness_sk, item_id))",
+        "assert(nullifier_not_in_ledger_nullifiers)"
       ],
-      "outputs": ["boolean"]
+      "outputs": [
+        "boolean"
+      ]
     },
     {
       "circuit": "settle_auction",
-      "inputs": ["winning_pk", "winning_amount", "winning_salt"],
-      "witnesses": ["private_seller_sk"],
+      "inputs": [
+        "winning_pk",
+        "winning_amount",
+        "winning_salt"
+      ],
+      "witnesses": [
+        "private_seller_sk"
+      ],
       "constraints": [
         "assert(state == AuctionState.Bidding)",
         "assert(bids_count > 0)",
         "assert(sha256(seller_sk) == seller_pubkey)",
-        "assert(winning_commitment_hash == expected_hash)"
+        "assert(winning_commitment_in_ledger_commitments)"
       ],
-      "outputs": ["boolean"]
+      "outputs": [
+        "boolean"
+      ]
     }
   ]
 }
